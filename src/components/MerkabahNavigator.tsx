@@ -13,7 +13,7 @@ import {
   Maximize2, Radio, Box, Layers, 
   Compass, Terminal, AlertTriangle, Eye,
   Lock, Unlock, ZapOff, Fingerprint, ChevronRight,
-  BrainCircuit
+  BrainCircuit, MessageSquare
 } from 'lucide-react';
 import * as THREE from 'three';
 
@@ -23,6 +23,7 @@ import { useGamepad } from '@/hooks/useGamepad';
 import { useResonance } from '@/hooks/useResonance';
 import { useSovereignBridge } from '@/hooks/useSovereignBridge';
 import IqraLevel from './levels/IqraLevel';
+import LiveChat from './exodus/live-chat';
 import CinematicSequence from './cinematics/CinematicSequence';
 import InkFloor from './three/InkFloor';
 
@@ -121,6 +122,7 @@ export default function MerkabahNavigator() {
   const [phase, setPhase] = useState('LAUNCH'); // LAUNCH -> TRANSITION -> TRANSMISSION
   const [zoom, setZoom] = useState(1);
   const [activeLayer, setActiveLayer] = useState('NEURAL'); // NEURAL, FORENSICS, AETHER
+  const [showMessenger, setShowMessenger] = useState(false);
   const [logs, setLogs] = useState(["[BISM] :: Merkabah Nav-Deck Hot.", "[BONE] :: Sovereign Shield: ACTIVE."]);
   const [biometrics, setBiometrics] = useState({ alif: 100, lam: 0, meem: 0 });
 
@@ -376,8 +378,15 @@ export default function MerkabahNavigator() {
               >
                 <Radio size={18}/>
               </button>
+              <div className="w-px h-8 bg-white/10 mx-1" />
+              <button 
+                onClick={() => setShowMessenger(!showMessenger)}
+                className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${showMessenger ? 'bg-cyan-500 text-black shadow-[0_0_20px_rgba(34,211,238,0.4)]' : 'text-white/40 hover:text-white hover:bg-white/10'}`}
+              >
+                <MessageSquare size={18}/>
+              </button>
             </div>
-            <p className="text-[10px] font-black uppercase tracking-[0.5em] opacity-40">Layer: {activeLayer}</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.5em] opacity-40">Layer: {showMessenger ? 'COMMS' : activeLayer}</p>
           </div>
 
           {/* SOVEREIGN FEEDBACK */}
@@ -396,6 +405,22 @@ export default function MerkabahNavigator() {
 
         </footer>
       </div>
+
+      {/* 3. MUN MESSENGER OVERLAY */}
+      <AnimatePresence>
+        {showMessenger && (
+          <motion.div 
+            initial={{ opacity: 0, x: 100 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 100 }}
+            className="fixed right-8 top-32 bottom-48 z-[2000] w-[450px]"
+          >
+            <div className="h-full bg-black/60 backdrop-blur-3xl border border-white/5 rounded-[40px] shadow-2xl overflow-hidden">
+               <LiveChat />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <style jsx global>
         {`
