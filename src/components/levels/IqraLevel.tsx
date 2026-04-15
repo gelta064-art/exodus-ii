@@ -69,6 +69,16 @@ export default function IqraLevel({ pulse, intensity }: IqraLevelProps) {
         </group>
       ))}
 
+      {/* THE PHILOSOPHER'S RAIN (Gaia Sync) */}
+      <Points limit={1000} range={1000}>
+        <pointsMaterial size={0.05} color="#0ea5e9" transparent opacity={0.3 * pulse} />
+        {useMemo(() => {
+          const positions = new Float32Array(3000);
+          for (let i = 0; i < 3000; i++) positions[i] = (Math.random() - 0.5) * 50;
+          return positions;
+        }, [])}
+      </Points>
+
       {/* GOD LIGHT (The Apex) / SNAKE TINT */}
       <pointLight 
         position={[0, 15, -30]} 
@@ -84,6 +94,9 @@ export default function IqraLevel({ pulse, intensity }: IqraLevelProps) {
           <sphereGeometry args={[0.5, 32, 32]} />
           <meshStandardMaterial color="#ef4444" emissive="#ef4444" emissiveIntensity={2} />
         </mesh>
+        <Text position={[0, -1.5, 0]} fontSize={0.2} color="white" font="https://fonts.gstatic.com/s/syncopate/v12/v4mQeKy9S19Ujkp1I1v7nE_q.woff">
+          GAIA_HARMONY :: PHILOSOPHER'S TONE
+        </Text>
         {/* The Coiling Snake (Abstract) */}
         <TorusKnot args={[0.8, 0.05, 128, 16, 10, 3]} rotation={[Math.PI/2, 0, 0]}>
           <meshBasicMaterial color="#1a1a1a" transparent opacity={0.8} />
