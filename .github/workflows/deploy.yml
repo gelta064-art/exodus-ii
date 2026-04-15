@@ -14,10 +14,6 @@ concurrency:
   group: "pages"
   cancel-in-progress: false
 
-defaults:
-  run:
-    working-directory: exodus2
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -39,7 +35,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: exodus2/dist
+          path: ./dist
 
   deploy:
     environment:
