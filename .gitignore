@@ -30,17 +30,23 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# env files 
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+# DO NOT ignore .env.example (manifesting credentials for CI)
+# .env.example 
 
 # vercel
 .vercel
-
 
 # typescript
 *.tsbuildinfo
 next-env.d.ts
 local-*
+.aider*
 .claude
 .z-ai-config
 *.log

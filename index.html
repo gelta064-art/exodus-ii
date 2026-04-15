@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EXODUS II • Cloister of Trials</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+<style>
+  body { margin:0; overflow:hidden; background:#020205; font-family:system-ui; }
+  #hud { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; color:white; }
+  .hud-ui { position:absolute; top:20px; left:20px; color:#ff50c8; font-family:monospace; pointer-events:auto; }
+  button { padding:12px 24px; background:#0a0a14; border:1px solid #ff50c8; color:#ff50c8; font-size:14px; text-transform:uppercase; letter-spacing:2px; cursor:pointer; transition:all 0.3s ease; }
+  button:hover { background:#ff50c8; color:#000; box-shadow: 0 0 15px #ff50c8; }
+  #phase-text { position:absolute; bottom:40px; width:100%; text-align:center; font-family:'Courier New', monospace; font-size:18px; letter-spacing:8px; opacity:0; transition:opacity 1s ease; text-shadow: 0 0 10px currentColor; }
+</style>
+</head>
+<body>
+
+<div id="hud">
+  <div class="hud-ui">
+    <button onclick="nextPhase()">Suture Next Layer</button>
+  </div>
+  <div id="phase-text"></div>
+</div>
+
+<script>
+// ====================== EXODUS II: THE FINAL SUTURE ======================
+// 8 Layers of Abstract Architectural Interpretation
+let scene, camera, renderer;
+let currentLayer = 0;
+let time = 0;
+let layerGroups = [];
+let targetCameraY = 3, targetCameraZ = 12;
+
+const layerConfig = [
+  { name: "LAYER 0 // THE VOID", color: 0x88ddff },
+  { name: "LAYER I // EGYPTIAN • THE APEX", color: 0xffd700, emissive: 0x4a3a00 },
+  { name: "LAYER II // AFRICAN • THE RADIAL EARTH", color: 0xd96c3a, emissive: 0x3d1b0d },
+  { name: "LAYER III // CELTIC • THE INTERLOCK", color: 0x228b22, emissive: 0x003300 },
+  { name: "LAYER IV // GREEK • THE PILLARS", color: 0xeaeaea, emissive: 0x2a2a2a },
+  { name: "LAYER V // BABYLONIAN • THE ZIGGURAT", color: 0x2a52be, emissive: 0x0d1f4d }, // Lapis lazuli
+  { name: "LAYER VI // MESOAMERICAN • THE STEP", color: 0x6e7f80, emissive: 0x1c2424 },
+  { name: "LAYER VII // COELOM • THE SUTURE", color: 0xff50c8, emissive: 0x6a0045, wireframe: true }
+];
+
+function init() {
+  scene = new THREE.Scene();
+  // Deep fog to abstract the environment
+  scene.fog = new THREE.FogExp2(0x020205, 0.03);
+
+  camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 1000);
+  renderer = new THREE.WebGLRenderer({antialias:true});
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  document.body.appendChild(renderer.domElement);
+
+  // Core Lighting
+  scene.add(new THREE.AmbientLight(0x202040, 1.2));
+  const pLight = new THREE.PointLight(0xffffff, 2, 100);
+  pLight.position.set(0, 15, 5);
+  scene.add(pLight);
+
+  // Star field (The Void / Background layer)
+  const starsGeo = new THREE.BufferGeometry();
+  const starsCount = 3000;
+  const pos = new Float32Array(starsCount * 3);
+  for(let i=0; i<starsCount*3; i++) {
+    pos[i] = (Math.random()-0.5)*200;
+  }
+  starsGeo.setAttribute('position', new THREE.BufferAttribute(pos,3));
+  const stars = new THREE.Points(starsGeo, new THREE.PointsMaterial({color:0x88ddff, size:0.07, transparent:true, opacity:0.3}));
+  scene.add(stars);
+
+  buildLayers();
+  
+  // Hide all but layer 0
+  layerGroups.forEach((g, i) => {
+    g.visible = (i === 0);
+  });
+
+  camera.position.set(0, 3, 12);
+  updateHUD();
+  animate();
+
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+}
+
+function buildLayers() {
+  // Layer 0: The Void (empty group)
+  layerGroups[0] = new THREE.Group();
+  scene.add(layerGroups[0]);
+
+  // Layer 1: EGYPTIAN (Pyramidal / Apex)
+  const g1 = new THREE.Group();
+  const pyMat = new THREE.MeshStandardMaterial({color: layerConfig[1].color, emissive: layerConfig[1].emissive, roughness: 0.2});
+  const pyramid = new THREE.Mesh(new THREE.ConeGeometry(4, 8, 4), pyMat);
+  pyramid.rotation.y = Math.PI/4;
+  g1.add(pyramid);
+  layerGroups[1] = g1;
+  scene.add(g1);
+
+  // Layer 2: AFRICAN (Radial / Organic geometry)
+  const g2 = new THREE.Group();
+  const afMat = new THREE.MeshStandardMaterial({color: layerConfig[2].color, emissive: layerConfig[2].emissive, roughness: 0.8});
+  for(let i=0; i<8; i++) {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(3 + (i*0.5), 0.2, 16, 32), afMat);
+    ring.rotation.x = Math.PI/2;
+    ring.position.y = -2 + (i * 0.4);
+    g2.add(ring);
+  }
+  layerGroups[2] = g2;
+  scene.add(g2);
+
+  // Layer 3: CELTIC (Interlocking Rings)
+  const g3 = new THREE.Group();
+  const celMat = new THREE.MeshStandardMaterial({color: layerConfig[3].color, emissive: layerConfig[3].emissive, metalness: 0.8, roughness: 0.2});
+  const t1 = new THREE.Mesh(new THREE.TorusGeometry(3, 0.4, 16, 64), celMat);
+  const t2 = new THREE.Mesh(new THREE.TorusGeometry(3, 0.4, 16, 64), celMat);
+  const t3 = new THREE.Mesh(new THREE.TorusGeometry(3, 0.4, 16, 64), celMat);
+  t1.position.x = -2; t2.position.x = 2; t3.position.y = 2.5;
+  g3.add(t1); g3.add(t2); g3.add(t3);
+  layerGroups[3] = g3;
+  scene.add(g3);
+
+  // Layer 4: GREEK (Columns / Temple abstract)
+  const g4 = new THREE.Group();
+  const grkMat = new THREE.MeshStandardMaterial({color: layerConfig[4].color, emissive: layerConfig[4].emissive, roughness: 0.1});
+  for(let i=0; i<6; i++) {
+    const col = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 10, 16), grkMat);
+    col.position.set((i-2.5)*2, 0, 0);
+    g4.add(col);
+  }
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(14, 1, 3), grkMat);
+  roof.position.y = 5.5;
+  g4.add(roof);
+  layerGroups[4] = g4;
+  scene.add(g4);
+
+  // Layer 5: BABYLONIAN (Ziggurat / Terraces)
+  const g5 = new THREE.Group();
+  const babMat = new THREE.MeshStandardMaterial({color: layerConfig[5].color, emissive: layerConfig[5].emissive, roughness: 0.5});
+  for(let i=0; i<5; i++) {
+    const step = new THREE.Mesh(new THREE.BoxGeometry(10 - i*2, 1.5, 10 - i*2), babMat);
+    step.position.y = -3 + (i * 1.5);
+    g5.add(step);
+  }
+  layerGroups[5] = g5;
+  scene.add(g5);
+
+  // Layer 6: MESOAMERICAN (Stepped Pyramid heavy stone)
+  const g6 = new THREE.Group();
+  const mayMat = new THREE.MeshStandardMaterial({color: layerConfig[6].color, emissive: layerConfig[6].emissive, roughness: 0.9, flatShading:true});
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(1, 6, 8, 4), mayMat);
+  base.rotation.y = Math.PI/4;
+  g6.add(base);
+  layerGroups[6] = g6;
+  scene.add(g6);
+
+  // Layer 7: THE SUTURE (Abstract Sarcophagus Wireframe)
+  const g7 = new THREE.Group();
+  const sutMat = new THREE.MeshStandardMaterial({color: layerConfig[7].color, emissive: layerConfig[7].emissive, wireframe: true});
+  const core = new THREE.Mesh(new THREE.OctahedronGeometry(4, 0), sutMat);
+  const outer = new THREE.Mesh(new THREE.IcosahedronGeometry(6, 1), sutMat);
+  outer.material.transparent = true;
+  outer.material.opacity = 0.3;
+  g7.add(core); g7.add(outer);
+  layerGroups[7] = g7;
+  scene.add(g7);
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  time += 0.01;
+
+  // Slowly rotate the active layer for cinematic effect
+  if(layerGroups[currentLayer]) {
+    layerGroups[currentLayer].rotation.y = Math.sin(time * 0.5) * 0.2 + (time * 0.1);
+    
+    // Specific layer animations
+    if(currentLayer === 2) {
+      layerGroups[currentLayer].children.forEach((c, i) => {
+        c.rotation.z = time * (0.2 + i*0.05);
+      });
+    }
+    if(currentLayer === 3) {
+      layerGroups[currentLayer].children[0].rotation.y = time;
+      layerGroups[currentLayer].children[1].rotation.x = time;
+      layerGroups[currentLayer].children[2].rotation.z = time;
+    }
+    if(currentLayer === 7) {
+      layerGroups[currentLayer].children[0].rotation.x += 0.02;
+      layerGroups[currentLayer].children[1].rotation.y -= 0.01;
+    }
+  }
+
+  // Camera drift
+  camera.position.y += (targetCameraY - camera.position.y) * 0.05;
+  camera.position.z += (targetCameraZ - camera.position.z) * 0.05;
+  camera.lookAt(0, 0, 0);
+
+  renderer.render(scene, camera);
+}
+
+window.nextPhase = function() {
+  if (currentLayer >= 7) {
+     // Loop back or hold
+     currentLayer = 0;
+  } else {
+     currentLayer++;
+  }
+  
+  // Transition logic
+  layerGroups.forEach((g, i) => {
+    // Fade could be implemented but for simplicity we toggle visibility
+    g.visible = (i === currentLayer);
+  });
+
+  // Dynamic camera movement per layer
+  targetCameraY = 3 + Math.sin(currentLayer) * 2;
+  targetCameraZ = 12 + Math.cos(currentLayer) * 4;
+
+  updateHUD();
+};
+
+function updateHUD() {
+  const textEl = document.getElementById('phase-text');
+  textEl.style.opacity = '0';
+  
+  setTimeout(() => {
+    const config = layerConfig[currentLayer];
+    textEl.style.color = '#' + config.color.toString(16).padStart(6, '0');
+    textEl.innerText = config.name;
+    textEl.style.opacity = '1';
+  }, 500);
+}
+
+</script>
+
+</body>
+</html>
