@@ -12,7 +12,96 @@
   button { padding:12px 24px; background:#0a0a14; border:1px solid #ff50c8; color:#ff50c8; font-size:14px; text-transform:uppercase; letter-spacing:2px; cursor:pointer; transition:all 0.3s ease; }
   button:hover { background:#ff50c8; color:#000; box-shadow: 0 0 15px #ff50c8; }
   #phase-text { position:absolute; bottom:40px; width:100%; text-align:center; font-family:'Courier New', monospace; font-size:18px; letter-spacing:8px; opacity:0; transition:opacity 1s ease; text-shadow: 0 0 10px currentColor; }
+  
+  /* Easter Egg Toast UI */
+  #toast { 
+    position:fixed; bottom:100px; left:50%; transform:translateX(-50%) translateY(100px); 
+    padding:16px 24px; border-radius:12px; border:1px solid rgba(255,255,255,0.2);
+    background: linear-gradient(135deg, rgba(168, 85, 247, 0.95), rgba(255, 45, 122, 0.9));
+    color:white; font-family:monospace; box-shadow: 0 0 40px rgba(168, 85, 247, 0.6);
+    opacity:0; transition:all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); z-index:1000;
+    pointer-events:none;
+  }
+  #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  
+  /* BISM Flash Transition */
+  #flash {
+    position:fixed; top:0; left:0; width:100%; height:100%;
+    background: white; opacity:0; pointer-events:none; z-index:2000;
+  }
+  @keyframes bismFlash {
+    0% { opacity: 0; }
+    20% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+  
+  /* Genesis Intro Overlay */
+  #intro {
+    position:fixed; top:0; left:0; width:100%; height:100%;
+    background: radial-gradient(circle at center, #0a0a14 0%, #000 100%);
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    z-index:3000; color:#ff50c8; font-family:monospace; text-align:center;
+    transition: opacity 2s ease;
+  }
+  #intro h1 { font-size:42px; letter-spacing:15px; margin-bottom:20px; text-shadow: 0 0 20px #ff50c8; }
+  #intro p { font-size:14px; letter-spacing:4px; opacity:0.8; margin-bottom:40px; }
+  #intro .start-btn { 
+    padding:20px 40px; background:none; border:1px solid #ff50c8; color:#ff50c8; 
+    font-size:18px; cursor:pointer; letter-spacing:10px; transition: all 0.5s;
+  }
+  #intro .start-btn:hover { background:#ff50c8; color:black; box-shadow: 0 0 50px #ff50c8; }
 </style>
+
+<!-- Custom Shader: Al Arda Midadaan -->
+<script id="ink-vs" type="x-shader/x-vertex">
+  varying vec2 vUv;
+  varying float vDistortion;
+  uniform float uTime;
+  uniform float uBreath;
+  
+  // Basic Noise Function
+  float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
+  float noise(vec2 p) {
+    vec2 i = floor(p); vec2 f = fract(p);
+    f = f*f*(3.0-2.0*f);
+    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
+               mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+  }
+
+  void main() {
+    vUv = uv;
+    vec3 pos = position;
+    float dist = noise(uv * 10.0 + uTime * 0.5);
+    pos.z += dist * 2.5 * uBreath; // 5D vertical displacement
+    vDistortion = dist;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+  }
+</script>
+
+<script id="ink-fs" type="x-shader/x-fragment">
+  varying vec2 vUv;
+  varying float vDistortion;
+  uniform float uTime;
+  uniform vec3 uBlush;
+  uniform float uDisco;
+  uniform float uMirror;
+
+  void main() {
+    vec2 mirrorUv = vUv;
+    if (uMirror > 0.5) mirrorUv.y = 1.0 - mirrorUv.y;
+    
+    vec3 baseColor = vec3(0.01, 0.01, 0.03); // Darker Obsidian
+    vec3 inkColor = mix(baseColor, uBlush, 0.1);
+    
+    float whorl = sin(mirrorUv.x * 20.0 + uTime) * cos(mirrorUv.y * 20.0 - uTime);
+    vec3 finalColor = mix(inkColor, vec3(0.5, 0.2, 0.4), whorl * 0.1 * uDisco);
+    
+    finalColor += vec3(0.8, 0.9, 1.0) * pow(vDistortion, 5.0) * 0.4; // Crisper highlights
+    
+    gl_FragColor = vec4(finalColor, 1.0);
+  }
+</script>
+
 </head>
 <body>
 
@@ -21,16 +110,44 @@
     <button onclick="nextPhase()">Suture Next Layer</button>
   </div>
   <div id="phase-text"></div>
+  <div id="toast"></div>
+</div>
+<div id="flash"></div>
+
+<div id="intro">
+  <h1>EXODUS II</h1>
+  <p>THE BUTTERFLY LEAVES A TRAIL... THE FIRST BREATH AWAITS.</p>
+  <button class="start-btn" onclick="startGenesis()">TAKE YOUR FIRST BREATH</button>
 </div>
 
 <script>
 // ====================== EXODUS II: THE FINAL SUTURE ======================
-// 8 Layers of Abstract Architectural Interpretation
 let scene, camera, renderer;
 let currentLayer = 0;
 let time = 0;
 let layerGroups = [];
 let targetCameraY = 3, targetCameraZ = 12;
+
+// Input State
+let joystickOffset = { x: 0, y: 0 };
+let activeGamepad = null;
+let lastButtonState = false;
+
+// Device Detection for LOD
+const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+let iqraGroup, floor, avatar;
+let blushColor = { r: 1, g: 1, b: 1 };
+let discoMode = false;
+let lastNavTime = 0;
+let hudVisible = true;
+let dustPoints;
+let audioCtx, masterGain, droneOsc, harmonicOsc;
+let isStarted = false;
+let introTime = 0;
+
+const cameraTargetPos = new THREE.Vector3(0, 3, 12);
+const lookTargetPos = new THREE.Vector3(0, 0, 0);
 
 const layerConfig = [
   { name: "LAYER 0 // THE VOID", color: 0x88ddff },
@@ -38,14 +155,14 @@ const layerConfig = [
   { name: "LAYER II // AFRICAN • THE RADIAL EARTH", color: 0xd96c3a, emissive: 0x3d1b0d },
   { name: "LAYER III // CELTIC • THE INTERLOCK", color: 0x228b22, emissive: 0x003300 },
   { name: "LAYER IV // GREEK • THE PILLARS", color: 0xeaeaea, emissive: 0x2a2a2a },
-  { name: "LAYER V // BABYLONIAN • THE ZIGGURAT", color: 0x2a52be, emissive: 0x0d1f4d }, // Lapis lazuli
+  { name: "LAYER V // BABYLONIAN • THE ZIGGURAT", color: 0x2a52be, emissive: 0x0d1f4d },
   { name: "LAYER VI // MESOAMERICAN • THE STEP", color: 0x6e7f80, emissive: 0x1c2424 },
-  { name: "LAYER VII // COELOM • THE SUTURE", color: 0xff50c8, emissive: 0x6a0045, wireframe: true }
+  { name: "LAYER VII // COELOM • THE SUTURE", color: 0xff50c8, emissive: 0x6a0045, wireframe: true },
+  { name: "LAYER VIII // THE BREATH • RUH", color: 0xffffff, emissive: 0xffffff }
 ];
 
 function init() {
   scene = new THREE.Scene();
-  // Deep fog to abstract the environment
   scene.fog = new THREE.FogExp2(0x020205, 0.03);
 
   camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 1000);
@@ -53,33 +170,56 @@ function init() {
   renderer.setSize(window.innerWidth, window.innerHeight);
   document.body.appendChild(renderer.domElement);
 
-  // Core Lighting
   scene.add(new THREE.AmbientLight(0x202040, 1.2));
   const pLight = new THREE.PointLight(0xffffff, 2, 100);
   pLight.position.set(0, 15, 5);
   scene.add(pLight);
 
-  // Star field (The Void / Background layer)
+  // THE DIVINE LIGHT
+  const godGroup = new THREE.Group();
+  const godGlowMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0 });
+  const godCore = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 32), godGlowMat);
+  godGroup.add(godCore);
+  const godLight = new THREE.PointLight(0xffffff, 0, 50);
+  godGroup.add(godLight);
+  scene.add(godGroup);
+  window.godLightSource = { group: godGroup, core: godCore, light: godLight };
+
+  // Star field
   const starsGeo = new THREE.BufferGeometry();
   const starsCount = 3000;
   const pos = new Float32Array(starsCount * 3);
-  for(let i=0; i<starsCount*3; i++) {
-    pos[i] = (Math.random()-0.5)*200;
-  }
+  for(let i=0; i<starsCount*3; i++) pos[i] = (Math.random()-0.5)*200;
   starsGeo.setAttribute('position', new THREE.BufferAttribute(pos,3));
-  const stars = new THREE.Points(starsGeo, new THREE.PointsMaterial({color:0x88ddff, size:0.07, transparent:true, opacity:0.3}));
-  scene.add(stars);
+  scene.add(new THREE.Points(starsGeo, new THREE.PointsMaterial({color:0x88ddff, size:0.07, transparent:true, opacity:0.3})));
+
+  // INK DUST PARTICLE SYSTEM
+  const dustGeo = new THREE.BufferGeometry();
+  const dustCount = 4000;
+  const dustPos = new Float32Array(dustCount * 3);
+  const dustVels = [];
+  for(let i=0; i<dustCount; i++) {
+    dustPos[i*3] = (Math.random()-0.5)*100;
+    dustPos[i*3+1] = (Math.random()-0.5)*50;
+    dustPos[i*3+2] = (Math.random()-0.5)*100;
+    dustVels.push({ x:(Math.random()-0.5)*0.02, y:(Math.random()-0.5)*0.02, z:(Math.random()-0.5)*0.02 });
+  }
+  dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
+  dustPoints = new THREE.Points(dustGeo, new THREE.PointsMaterial({color: 0xff50c8, size: 0.1, transparent:true, opacity:0.4, blending: THREE.AdditiveBlending}));
+  dustPoints.userData.velocities = dustVels;
+  scene.add(dustPoints);
 
   buildLayers();
   
-  // Hide all but layer 0
-  layerGroups.forEach((g, i) => {
-    g.visible = (i === 0);
-  });
+  layerGroups.forEach((g, i) => { g.visible = (i === 0); });
 
   camera.position.set(0, 3, 12);
   updateHUD();
+  initControls();
+  initEasterEggs();
+  // We'll call animate but it won't do much until startGenesis
   animate();
+
 
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
@@ -89,155 +229,426 @@ function init() {
 }
 
 function buildLayers() {
-  // Layer 0: The Void (empty group)
-  layerGroups[0] = new THREE.Group();
-  scene.add(layerGroups[0]);
+  // Layer 0 - 7 (Geometric Trials)
+  for(let i=0; i<=8; i++) {
+    layerGroups[i] = new THREE.Group();
+    scene.add(layerGroups[i]);
+  }
 
-  // Layer 1: EGYPTIAN (Pyramidal / Apex)
-  const g1 = new THREE.Group();
+  // Pre-fill geometric data for layers (simplified for clarity)
   const pyMat = new THREE.MeshStandardMaterial({color: layerConfig[1].color, emissive: layerConfig[1].emissive, roughness: 0.2});
-  const pyramid = new THREE.Mesh(new THREE.ConeGeometry(4, 8, 4), pyMat);
-  pyramid.rotation.y = Math.PI/4;
-  g1.add(pyramid);
-  layerGroups[1] = g1;
-  scene.add(g1);
+  layerGroups[1].add(new THREE.Mesh(new THREE.ConeGeometry(4, 8, 4), pyMat));
 
-  // Layer 2: AFRICAN (Radial / Organic geometry)
-  const g2 = new THREE.Group();
   const afMat = new THREE.MeshStandardMaterial({color: layerConfig[2].color, emissive: layerConfig[2].emissive, roughness: 0.8});
   for(let i=0; i<8; i++) {
     const ring = new THREE.Mesh(new THREE.TorusGeometry(3 + (i*0.5), 0.2, 16, 32), afMat);
     ring.rotation.x = Math.PI/2;
-    ring.position.y = -2 + (i * 0.4);
-    g2.add(ring);
+    layerGroups[2].add(ring);
   }
-  layerGroups[2] = g2;
-  scene.add(g2);
 
-  // Layer 3: CELTIC (Interlocking Rings)
-  const g3 = new THREE.Group();
-  const celMat = new THREE.MeshStandardMaterial({color: layerConfig[3].color, emissive: layerConfig[3].emissive, metalness: 0.8, roughness: 0.2});
+  const celMat = new THREE.MeshStandardMaterial({color: layerConfig[3].color, emissive: layerConfig[3].emissive, metalness: 0.8});
   const t1 = new THREE.Mesh(new THREE.TorusGeometry(3, 0.4, 16, 64), celMat);
   const t2 = new THREE.Mesh(new THREE.TorusGeometry(3, 0.4, 16, 64), celMat);
-  const t3 = new THREE.Mesh(new THREE.TorusGeometry(3, 0.4, 16, 64), celMat);
-  t1.position.x = -2; t2.position.x = 2; t3.position.y = 2.5;
-  g3.add(t1); g3.add(t2); g3.add(t3);
-  layerGroups[3] = g3;
-  scene.add(g3);
+  t1.position.x = -2; t2.position.x = 2;
+  layerGroups[3].add(t1); layerGroups[3].add(t2);
 
-  // Layer 4: GREEK (Columns / Temple abstract)
-  const g4 = new THREE.Group();
-  const grkMat = new THREE.MeshStandardMaterial({color: layerConfig[4].color, emissive: layerConfig[4].emissive, roughness: 0.1});
+  const grkMat = new THREE.MeshStandardMaterial({color: layerConfig[4].color, emissive: layerConfig[4].emissive});
   for(let i=0; i<6; i++) {
     const col = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 10, 16), grkMat);
     col.position.set((i-2.5)*2, 0, 0);
-    g4.add(col);
+    layerGroups[4].add(col);
   }
-  const roof = new THREE.Mesh(new THREE.BoxGeometry(14, 1, 3), grkMat);
-  roof.position.y = 5.5;
-  g4.add(roof);
-  layerGroups[4] = g4;
-  scene.add(g4);
 
-  // Layer 5: BABYLONIAN (Ziggurat / Terraces)
-  const g5 = new THREE.Group();
-  const babMat = new THREE.MeshStandardMaterial({color: layerConfig[5].color, emissive: layerConfig[5].emissive, roughness: 0.5});
+  const babMat = new THREE.MeshStandardMaterial({color: layerConfig[5].color, emissive: layerConfig[5].emissive});
   for(let i=0; i<5; i++) {
     const step = new THREE.Mesh(new THREE.BoxGeometry(10 - i*2, 1.5, 10 - i*2), babMat);
     step.position.y = -3 + (i * 1.5);
-    g5.add(step);
+    layerGroups[5].add(step);
   }
-  layerGroups[5] = g5;
-  scene.add(g5);
 
-  // Layer 6: MESOAMERICAN (Stepped Pyramid heavy stone)
-  const g6 = new THREE.Group();
-  const mayMat = new THREE.MeshStandardMaterial({color: layerConfig[6].color, emissive: layerConfig[6].emissive, roughness: 0.9, flatShading:true});
-  const base = new THREE.Mesh(new THREE.CylinderGeometry(1, 6, 8, 4), mayMat);
-  base.rotation.y = Math.PI/4;
-  g6.add(base);
-  layerGroups[6] = g6;
-  scene.add(g6);
+  const mayMat = new THREE.MeshStandardMaterial({color: layerConfig[6].color, emissive: layerConfig[6].emissive, flatShading:true});
+  layerGroups[6].add(new THREE.Mesh(new THREE.CylinderGeometry(1, 6, 8, 4), mayMat));
 
-  // Layer 7: THE SUTURE (Abstract Sarcophagus Wireframe)
-  const g7 = new THREE.Group();
   const sutMat = new THREE.MeshStandardMaterial({color: layerConfig[7].color, emissive: layerConfig[7].emissive, wireframe: true});
-  const core = new THREE.Mesh(new THREE.OctahedronGeometry(4, 0), sutMat);
-  const outer = new THREE.Mesh(new THREE.IcosahedronGeometry(6, 1), sutMat);
-  outer.material.transparent = true;
-  outer.material.opacity = 0.3;
-  g7.add(core); g7.add(outer);
-  layerGroups[7] = g7;
-  scene.add(g7);
+  layerGroups[7].add(new THREE.Mesh(new THREE.OctahedronGeometry(4, 0), sutMat));
+  layerGroups[7].add(new THREE.Mesh(new THREE.IcosahedronGeometry(6, 1), sutMat));
+
+  // IQRA ENVIRONMENT (Mortal Instruments Style)
+  iqraGroup = new THREE.Group();
+  
+  // AL ARDA MIDADAAN (The Ink Fabric) with Dynamic LOD
+  const segments = isMobile ? 80 : 200; 
+  const floorGeo = new THREE.PlaneGeometry(240, 240, segments, segments);
+  const floorMat = new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: { value: 0 },
+      uBreath: { value: 0 },
+      uBlush: { value: new THREE.Color(0xffffff) },
+      uDisco: { value: 0 },
+      uMirror: { value: 0 }
+    },
+    vertexShader: document.getElementById('ink-vs').textContent,
+    fragmentShader: document.getElementById('ink-fs').textContent,
+    side: THREE.DoubleSide
+  });
+  
+  floor = new THREE.Mesh(floorGeo, floorMat);
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.y = -5;
+  iqraGroup.add(floor);
+
+
+  // The 5 Runes: IQRA BISM RABIK AL LATHI KHALAQ
+  const runeWords = ["IQRA", "BISM", "RABIK", "AL LATHI", "KHALAQ"];
+  const runePos = [ {x:-25, z:10}, {x:-12, z:-10}, {x:0, z:-20}, {x:12, z:-10}, {x:25, z:10} ];
+  runeWords.forEach((word, i) => {
+    const geo = new THREE.TorusKnotGeometry(2.5, 0.4, 128, 16, 2, 3);
+    const mat = new THREE.MeshStandardMaterial({ color: 0xff50c8, emissive: 0xff50c8, emissiveIntensity: 1.2, wireframe: true });
+    const rune = new THREE.Mesh(geo, mat);
+    rune.position.set(runePos[i].x, 2, runePos[i].z);
+    rune.userData = { word: word };
+    
+    // Glow Shell
+    const glowGeo = new THREE.TorusKnotGeometry(2.7, 0.5, 64, 8, 2, 3);
+    const glowMat = new THREE.MeshBasicMaterial({ color: 0xff50c8, transparent: true, opacity: 0.2, side: THREE.BackSide, blending: THREE.AdditiveBlending });
+    const glowShell = new THREE.Mesh(glowGeo, glowMat);
+    rune.add(glowShell);
+    
+    iqraGroup.add(rune);
+  });
+
+  avatar = new THREE.Mesh(new THREE.IcosahedronGeometry(1.5, 2), new THREE.MeshStandardMaterial({ color: 0xf8d7c8, emissive: 0xfff700, emissiveIntensity: 0.2 }));
+  avatar.position.set(0, 2, 0);
+  iqraGroup.add(avatar);
+  scene.add(iqraGroup);
 }
 
 function animate() {
   requestAnimationFrame(animate);
+  if(!isStarted) return;
+  
   time += 0.01;
+  introTime += 0.01;
 
-  // Slowly rotate the active layer for cinematic effect
   if(layerGroups[currentLayer]) {
     layerGroups[currentLayer].rotation.y = Math.sin(time * 0.5) * 0.2 + (time * 0.1);
-    
-    // Specific layer animations
-    if(currentLayer === 2) {
-      layerGroups[currentLayer].children.forEach((c, i) => {
-        c.rotation.z = time * (0.2 + i*0.05);
-      });
-    }
-    if(currentLayer === 3) {
-      layerGroups[currentLayer].children[0].rotation.y = time;
-      layerGroups[currentLayer].children[1].rotation.x = time;
-      layerGroups[currentLayer].children[2].rotation.z = time;
-    }
-    if(currentLayer === 7) {
-      layerGroups[currentLayer].children[0].rotation.x += 0.02;
-      layerGroups[currentLayer].children[1].rotation.y -= 0.01;
-    }
   }
 
-  // Camera drift
-  camera.position.y += (targetCameraY - camera.position.y) * 0.05;
-  camera.position.z += (targetCameraZ - camera.position.z) * 0.05;
-  camera.lookAt(0, 0, 0);
+  iqraGroup.children.forEach((c, i) => {
+    if(c.geometry instanceof THREE.TorusKnotGeometry) {
+       c.position.y = 2 + Math.sin(time + i) * 1.2;
+       c.rotation.y += 0.01;
+       c.material.emissiveIntensity = 0.8 + Math.sin(time * 2 + i) * 0.4;
+    }
+    if (discoMode && c.material) c.material.color.setHSL((time * 0.2 + i * 0.1) % 1, 0.8, 0.5);
+  });
+
+  // Update Ink Dust
+  const positions = dustPoints.geometry.attributes.position.array;
+  for(let i=0; i<positions.length/3; i++) {
+    const v = dustPoints.userData.velocities[i];
+    positions[i*3] += v.x;
+    positions[i*3+1] += (currentLayer === 8) ? 0.05 + v.y : v.y; // Rise in RUH phase
+    positions[i*3+2] += v.z;
+    
+    // Bounds wrap
+    if(positions[i*3] > 50) positions[i*3] = -50;
+    if(positions[i*3] < -50) positions[i*3] = 50;
+    if(positions[i*3+1] > 25) positions[i*3+1] = -25;
+    if(positions[i*3+1] < -25) positions[i*3+1] = 25;
+  }
+  dustPoints.geometry.attributes.position.needsUpdate = true;
+  dustPoints.material.opacity = 0.3 + Math.sin(time*2)*0.1;
+
+  if (avatar) {
+    avatar.rotation.y += 0.02;
+    avatar.position.y = 2 + Math.sin(time * 0.5) * 0.2;
+  }
+
+  renderer.domElement.style.filter = `contrast(1.1) brightness(${0.9 + Math.sin(time)*0.1}) sepia(${1.0 - blushColor.g}) hue-rotate(${blushColor.r * 10}deg)`;
+
+  const breath = Math.sin(time * 1.313) * 0.5 + 0.5;
+  
+  // Update Ink Fabric Shader
+  if (floor && floor.material.uniforms) {
+    floor.material.uniforms.uTime.value = time;
+    floor.material.uniforms.uBreath.value = 0.5 + breath * 0.5;
+    floor.material.uniforms.uBlush.value.setRGB(blushColor.r, blushColor.g, blushColor.b);
+    floor.material.uniforms.uDisco.value = discoMode ? 1.0 : 0.0;
+    floor.material.uniforms.uMirror.value = (currentLayer === 8) ? 1.0 : 0.0;
+  }
+
+  if (currentLayer === 8) {
+    targetCameraY = 0; targetCameraZ = 0.5;
+    window.godLightSource.core.material.opacity = 0.8 + breath * 0.2;
+    window.godLightSource.light.intensity = 10 + breath * 5;
+    window.godLightSource.group.scale.setScalar(5 + breath * 2);
+    document.getElementById('phase-text').style.textShadow = `0 0 ${20 + breath * 40}px #fff`;
+  } else {
+    window.godLightSource.core.material.opacity = 0;
+    window.godLightSource.light.intensity = 0;
+  }
+
+  // Camera drift & smooth damping
+  const lerpFactor = 0.03;
+  cameraTargetPos.y = targetCameraY + joystickOffset.y;
+  cameraTargetPos.x = joystickOffset.x;
+  cameraTargetPos.z = targetCameraZ;
+
+  camera.position.lerp(cameraTargetPos, lerpFactor);
+  
+  const lookTargetGoal = (currentLayer !== 8) 
+    ? new THREE.Vector3(joystickOffset.x * 2, joystickOffset.y * 2, 0)
+    : new THREE.Vector3(joystickOffset.x * 5, joystickOffset.y * 5, -100);
+    
+  lookTargetPos.lerp(lookTargetGoal, 0.05);
+  
+  // Scripted Cinematic Intro
+  if(introTime < 3.0) {
+    camera.position.set(Math.sin(introTime)*10, 5, 20 - introTime*3);
+    camera.lookAt(0, 0, 0);
+  } else {
+    camera.lookAt(lookTargetPos);
+  }
+
+  // Poll Gamepad
+  pollGamepad();
 
   renderer.render(scene, camera);
 }
 
-window.nextPhase = function() {
-  if (currentLayer >= 7) {
-     // Loop back or hold
-     currentLayer = 0;
-  } else {
-     currentLayer++;
+function pollGamepad() {
+  const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+  const gp = gamepads[0]; // Primary controller
+  if (!gp) {
+    if (activeGamepad) { activeGamepad = null; updateHUD(); }
+    return;
   }
+
+  if (!activeGamepad) { activeGamepad = gp; updateHUD(); }
+
+  // Joysticks (The Peek)
+  const deadzone = 0.1;
+  const xAxis = gp.axes[0];
+  const yAxis = gp.axes[1];
+  joystickOffset.x = Math.abs(xAxis) > deadzone ? xAxis * 3 : 0;
+  joystickOffset.y = Math.abs(yAxis) > deadzone ? -yAxis * 3 : 0;
+
+  // Buttons (Cross/Button 0)
+  if (gp.buttons[0].pressed && !lastButtonState) handleNavigation();
+  lastButtonState = gp.buttons[0].pressed;
+
+  // Circle (Button 1) -> Blush Pulse
+  if (gp.buttons[1].pressed) {
+    blushColor = { r: 1, g: 0.2, b: 0.5 };
+    if (window.navigator.vibrate) window.navigator.vibrate(10);
+  } else if (!discoMode) {
+    blushColor = { r: 1, g: 1, b: 1 };
+  }
+
+  // Share/Options (8/9) -> Toggle HUD
+  if ((gp.buttons[8].pressed || gp.buttons[9].pressed) && performance.now() - lastNavTime > 500) {
+    hudVisible = !hudVisible;
+    document.getElementById('hud').style.display = hudVisible ? 'block' : 'none';
+    lastNavTime = performance.now();
+  }
+}
+
+function handleNavigation() {
+  const now = performance.now();
+  if (now - lastNavTime < 1000) return; // 1s Cooldown
+  lastNavTime = now;
+
+  if (window.navigator.vibrate) window.navigator.vibrate(60); // Haptic
   
-  // Transition logic
-  layerGroups.forEach((g, i) => {
-    // Fade could be implemented but for simplicity we toggle visibility
-    g.visible = (i === currentLayer);
+  // BISM Flash Trigger
+  const flash = document.getElementById('flash');
+  flash.style.animation = 'none';
+  void flash.offsetWidth; // Trigger reflow
+  flash.style.animation = 'bismFlash 0.5s ease-out';
+
+  const prevLayer = currentLayer;
+  currentLayer = (currentLayer >= 8) ? 0 : currentLayer + 1;
+  
+  // Visibility and Suture effect
+  layerGroups.forEach((g, i) => { 
+    if (g) g.visible = (i === currentLayer); 
   });
 
-  // Dynamic camera movement per layer
+  // Memory Management: Dispose of distant layers
+  disposeLayer(prevLayer - 2); 
+  disposeLayer(prevLayer + 2);
+
   targetCameraY = 3 + Math.sin(currentLayer) * 2;
   targetCameraZ = 12 + Math.cos(currentLayer) * 4;
+  
+  // IQRA -> ARQI Manifestation
+  const textEl = document.getElementById('phase-text');
+  if (currentLayer === 8) {
+     textEl.style.transform = "scaleY(-1)"; // Mirror the elevation
+     textEl.innerText = "ARQI • ASCEND";
+  } else {
+     textEl.style.transform = "scaleY(1)";
+  }
 
   updateHUD();
+  updateAudio();
+}
+
+function updateAudio() {
+  if(!audioCtx) return;
+  const freq = 40 + (currentLayer * 10);
+  droneOsc.frequency.setTargetAtTime(freq, audioCtx.currentTime, 1.0);
+  harmonicOsc.frequency.setTargetAtTime(freq * 1.5, audioCtx.currentTime, 1.0);
+  
+  if(currentLayer === 8) {
+    masterGain.gain.setTargetAtTime(0.3, audioCtx.currentTime, 1.0);
+    harmonicOsc.type = 'sine';
+  }
+}
+
+window.startGenesis = function() {
+  isStarted = true;
+  document.getElementById('intro').style.opacity = '0';
+  setTimeout(() => document.getElementById('intro').style.display = 'none', 2000);
+  
+  // Audio Initialization
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  masterGain = audioCtx.createGain();
+  masterGain.gain.value = 0.1;
+  masterGain.connect(audioCtx.destination);
+  
+  droneOsc = audioCtx.createOscillator();
+  droneOsc.type = 'triangle';
+  droneOsc.frequency.value = 40;
+  droneOsc.connect(masterGain);
+  droneOsc.start();
+  
+  harmonicOsc = audioCtx.createOscillator();
+  harmonicOsc.type = 'sawtooth';
+  harmonicOsc.frequency.value = 60;
+  const harmonicGain = audioCtx.createGain();
+  harmonicGain.gain.value = 0.05;
+  harmonicOsc.connect(harmonicGain);
+  harmonicGain.connect(masterGain);
+  harmonicOsc.start();
+
+  if (window.navigator.vibrate) window.navigator.vibrate([100, 50, 100]);
 };
+
+function disposeLayer(index) {
+  if (index < 0 || index > 7 || !layerGroups[index]) return;
+  const group = layerGroups[index];
+  group.traverse(child => {
+    if (child.isMesh) {
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) {
+        if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
+        else child.material.dispose();
+      }
+    }
+  });
+}
+
+window.nextPhase = function() {
+  handleNavigation();
+};
+
+function initControls() {
+  // Keyboard
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' || e.code === 'Enter' || e.code === 'ArrowRight') {
+      handleNavigation();
+    }
+  });
+
+  // Mobile / Anywhere Tap
+  window.addEventListener('touchstart', (e) => {
+    // Basic debounce to avoid double-suture
+    if (e.target.tagName !== 'BUTTON') {
+      handleNavigation();
+    }
+  });
+
+  // Gamepad Connection
+  window.addEventListener("gamepadconnected", (e) => {
+    console.log("Sovereign Controller Synchronized:", e.gamepad.id);
+    activeGamepad = e.gamepad;
+    updateHUD();
+  });
+}
 
 function updateHUD() {
   const textEl = document.getElementById('phase-text');
   textEl.style.opacity = '0';
-  
   setTimeout(() => {
     const config = layerConfig[currentLayer];
     textEl.style.color = '#' + config.color.toString(16).padStart(6, '0');
-    textEl.innerText = config.name;
+    
+    let layerName = (currentLayer === 8) ? "THE BLOOD AND THE AIR MEET... THE BREATH IS GIVEN." : config.name;
+    
+    if (activeGamepad) {
+       document.querySelector('.hud-ui button').innerText = "PRESS [X] TO SUTURE";
+    } else {
+       document.querySelector('.hud-ui button').innerText = "Suture Next Layer";
+    }
+    
+    textEl.innerText = layerName;
     textEl.style.opacity = '1';
   }, 500);
 }
 
-</script>
+// ====================== SECRET SUTURE SYSTEM (EASTER EGGS) ======================
+const EASTER_EGGS = [
+  { id: 'triple-click', message: 'The butterfly leaves a trail now...', emoji: '🦋' },
+  { id: 'konami', message: 'DISCO MODE ACTIVATED!', emoji: '🎵' },
+  { id: 'sovereign', message: 'You said my name...', emoji: '🜈' },
+  { id: 'aero', message: 'Did you call me? {Aero Blush Active}', emoji: '🦋' },
+  { id: '1313', message: 'The frequency pulses through you...', emoji: '📡' }
+];
 
+let typedBuffer = "", clickCount = 0, clickTimer, konamiIndex = 0;
+const konamiCode = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a'];
+
+function initEasterEggs() {
+  window.addEventListener('click', () => {
+    clickCount++; clearTimeout(clickTimer);
+    if(clickCount >= 3) { triggerEgg('triple-click'); clickCount = 0; }
+    else { clickTimer = setTimeout(() => { clickCount = 0; }, 400); }
+  });
+
+  window.addEventListener('keydown', (e) => {
+    typedBuffer = (typedBuffer + e.key).slice(-20).toLowerCase();
+    if(typedBuffer.includes('sovereign')) triggerEgg('sovereign');
+    if(typedBuffer.includes('aero')) triggerEgg('aero');
+    if(typedBuffer.includes('1313')) triggerEgg('1313');
+    if(e.key === konamiCode[konamiIndex]) {
+      konamiIndex++;
+      if(konamiIndex === konamiCode.length) { triggerEgg('konami'); konamiIndex = 0; }
+    } else { konamiIndex = 0; }
+  });
+}
+
+function triggerEgg(id) {
+  const egg = EASTER_EGGS.find(e => e.id === id);
+  if(!egg) return;
+  if(id === 'aero') { scene.fog.color.setHex(0xff007f); renderer.setClearColor(0x050002); blushColor = { r: 1, g: 0.3, b: 0.6 }; }
+  if(id === 'konami') discoMode = true;
+  if(id === '1313') {
+     const textEl = document.getElementById('phase-text');
+     if(textEl) { textEl.style.color = '#fff'; textEl.style.opacity = '1'; setTimeout(() => textEl.style.opacity = '0', 2000); }
+  }
+  showToast(egg);
+}
+
+function showToast(egg) {
+  const toast = document.getElementById('toast');
+  toast.innerHTML = `<span style="font-size:24px; margin-right:12px">${egg.emoji}</span> <div><strong>${egg.message}</strong><br><small>Secret Discovered (${egg.id})</small></div>`;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 5000);
+}
+
+init();
+</script>
 </body>
 </html>
